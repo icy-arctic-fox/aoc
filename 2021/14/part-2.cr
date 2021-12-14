@@ -1,63 +1,5 @@
 alias Pair = Tuple(Char, Char)
 
-class ExpansionIterator
-  include Iterator(Pair)
-
-  @pushback : Pair?
-  @i = 0
-
-  def initialize(@iter : Iterator(Pair), @rules : Hash(Pair, Char))
-  end
-
-  def next
-    unless @iter.is_a?(ExpansionIterator)
-      puts "Step #{@i}"
-      @i += 1
-    end
-
-    if pair = @pushback
-      @pushback = nil
-      return pair
-    end
-
-    pair = @iter.next
-    return stop if pair.is_a?(Iterator::Stop)
-
-    a, b = pair
-    if c = @rules[pair]?
-      @pushback = {c, b}
-      {a, c}
-    else
-      pair
-    end
-  end
-end
-
-class PolymerIterator
-  include Iterator(Char)
-
-  @last : Char?
-
-  def initialize(@iter : Iterator(Pair))
-  end
-
-  def next
-    pair = @iter.next
-    if pair.is_a?(Iterator::Stop)
-      if c = @last
-        @last = nil
-        c
-      else
-        stop
-      end
-    else
-      a, b = pair
-      @last = b
-      a
-    end
-  end
-end
-
 module Iterator(T)
   def tally64_by(& : T -> U) : Hash(U, Int64) forall U
     each_with_object(Hash(U, Int64).new) do |item, hash|
@@ -82,13 +24,25 @@ STDIN.each_line(chomp: true) do |line|
   rules[{a, b}] = insertion.chars.first
 end
 
-expansion = template.each_char.cons_pair
-40.times do
-  expansion = ExpansionIterator.new(expansion, rules)
-end
-polymer = PolymerIterator.new(expansion)
+elements = template.each_char.tally64
+pairs = template.each_char.cons_pair.tally64
 
-elements = polymer.tally64
-p elements
+40.times do
+  new_pairs = {} of Pair => Int64
+  pairs.each do |(a, b), count|
+    if c = rules[{a, b}]?
+      elements[c] = elements.fetch(c, 0_i64) + count
+      p1 = {a, c}
+      p2 = {c, b}
+      new_pairs[p1] = new_pairs.fetch(p1, 0_i64) + count
+      new_pairs[p2] = new_pairs.fetch(p2, 0_i64) + count
+    else
+      pair = {a, b}
+      new_pairs[pair] = new_pairs.fetch(pair, 0_i64) + count
+    end
+  end
+  pairs = new_pairs
+end
+
 amounts = elements.map { |k, v| {element: k, amount: v} }.sort_by(&.[:amount])
 puts amounts.last[:amount] - amounts.first[:amount]
