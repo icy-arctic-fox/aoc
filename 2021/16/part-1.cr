@@ -14,7 +14,6 @@ class HexToBinaryIterator
 
     bit = @nibble.bit(@bit)
     @bit -= 1
-    p bit
     !bit.zero?
   end
 
@@ -33,6 +32,8 @@ class StreamReader
   end
 
   def limit(bits)
+    @stream.first(bits) # This line causes the Crystal compiler to hang and eventually crash.
+    return self
     StreamReader.new(@stream.first(bits))
   end
 
@@ -117,7 +118,8 @@ class OperatorPacket < Packet
   end
 
   def self.read(version, type_id, reader) : self
-    packets = if length_type_id = reader.read_flag
+    length_type_id = reader.read_flag
+    packets = if length_type_id
                 read_packets_count(reader)
               else
                 read_packets_length(reader)
@@ -126,20 +128,20 @@ class OperatorPacket < Packet
     new(version, type_id, packets)
   end
 
-  private def self.read_packets_count(reader)
+  private def self.read_packets_count(reader) : Array(Packet)
     count = reader.read_u16(11)
     iterator = PacketIterator.new(reader)
     iterator.first(count).to_a
   end
 
-  private def self.read_packets_length(reader)
+  private def self.read_packets_length(reader) : Array(Packet)
     length = reader.read_u16(15)
     iterator = PacketIterator.new(reader.limit(length))
     iterator.to_a
   end
 end
 
-struct PacketIterator
+class PacketIterator
   include Iterator(Packet)
 
   def initialize(@reader : StreamReader)
@@ -148,7 +150,11 @@ struct PacketIterator
   def next
     version = @reader.read_u8(3)
     type_id = @reader.read_u8(3)
-    decode(type_id, version)
+    # decode(type_id, version)
+    # ValuePacket.read(version, @reader)
+    OperatorPacket.read(version, type_id, @reader)
+  rescue IO::EOFError
+    stop
   end
 
   private def decode(id, version)
