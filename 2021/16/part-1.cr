@@ -28,11 +28,11 @@ class HexToBinaryIterator
 end
 
 class StreamReader
-  def initialize(@stream : HexToBinaryIterator, @limit : UInt32? = nil)
+  def initialize(@stream : HexToBinaryIterator)
   end
 
   def limit(bits)
-    StreamReader.new(@stream, bits.to_u32)
+    LimitedStreamReader.new(@stream, bits.to_u32)
   end
 
   def read_u8(count) : UInt8
@@ -58,8 +58,8 @@ class StreamReader
     loop do
       more = read_flag
       4.times do
-        value |= read_bit
         value <<= 1
+        value |= read_bit
       end
       break unless more
     end
@@ -67,19 +67,36 @@ class StreamReader
   end
 
   def read_flag : Bool
-    raise IO::EOFError.new("Limit reached") if (limit = @limit) && limit == 0
-
     flag = @stream.next
     raise IO::EOFError.new("End of stream") if flag.is_a?(Iterator::Stop)
 
-    if limit = @limit
-      @limit = limit - 1
-    end
     flag
   end
 
   def read_bit
     read_flag ? 1_u8 : 0_u8
+  end
+end
+
+class LimitedStreamReader < StreamReader
+  def initialize(stream : HexToBinaryIterator, @limit : UInt32, @original : LimitedStreamReader? = nil)
+    super(stream)
+  end
+
+  def limit(bits)
+    LimitedStreamReader.new(@stream, bits.to_u32, self)
+  end
+
+  def read_flag : Bool
+    raise IO::EOFError.new("Limit reached") if @limit == 0
+
+    dec
+    super
+  end
+
+  protected def dec
+    @limit -= 1
+    @original.try &.dec
   end
 end
 
@@ -92,7 +109,7 @@ abstract class Packet
   end
 
   def sum_nested_versions
-    @version
+    @version.to_i
   end
 end
 
@@ -144,11 +161,16 @@ class OperatorPacket < Packet
   private def self.read_packets_length(reader) : Array(Packet)
     length = reader.read_u16(15)
     iterator = PacketIterator.new(reader.limit(length))
-    iterator.to_a
+    packets = [] of Packet
+    begin
+      iterator.each { |packet| packets << packet }
+    rescue IO::EOFError
+    end
+    packets
   end
 
   def sum_nested_versions
-    @version + @packets.sum(&.sum_nested_versions)
+    @version.to_i + @packets.sum(&.sum_nested_versions)
   end
 end
 
@@ -162,7 +184,7 @@ class PacketIterator
     version = @reader.read_u8(3)
     type_id = @reader.read_u8(3)
     decode(type_id, version)
-  rescue IO::EOFError
+  rescue e : IO::EOFError
     stop
   end
 
