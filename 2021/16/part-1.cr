@@ -28,13 +28,11 @@ class HexToBinaryIterator
 end
 
 class StreamReader
-  def initialize(@stream : Iterator(Bool))
+  def initialize(@stream : HexToBinaryIterator, @limit : UInt32? = nil)
   end
 
   def limit(bits)
-    @stream.first(bits) # This line causes the Crystal compiler to hang and eventually crash.
-    return self
-    StreamReader.new(@stream.first(bits))
+    StreamReader.new(@stream, bits.to_u32)
   end
 
   def read_u8(count) : UInt8
@@ -69,9 +67,14 @@ class StreamReader
   end
 
   def read_flag : Bool
+    raise IO::EOFError.new("Limit reached") if (limit = @limit) && limit == 0
+
     flag = @stream.next
     raise IO::EOFError.new("End of stream") if flag.is_a?(Iterator::Stop)
 
+    if limit = @limit
+      @limit = limit - 1
+    end
     flag
   end
 
@@ -86,6 +89,10 @@ abstract class Packet
   abstract def type_id : UInt8
 
   def initialize(@version)
+  end
+
+  def sum_nested_versions
+    @version
   end
 end
 
@@ -139,6 +146,10 @@ class OperatorPacket < Packet
     iterator = PacketIterator.new(reader.limit(length))
     iterator.to_a
   end
+
+  def sum_nested_versions
+    @version + @packets.sum(&.sum_nested_versions)
+  end
 end
 
 class PacketIterator
@@ -150,9 +161,7 @@ class PacketIterator
   def next
     version = @reader.read_u8(3)
     type_id = @reader.read_u8(3)
-    # decode(type_id, version)
-    # ValuePacket.read(version, @reader)
-    OperatorPacket.read(version, type_id, @reader)
+    decode(type_id, version)
   rescue IO::EOFError
     stop
   end
@@ -168,4 +177,4 @@ end
 hex2bin = HexToBinaryIterator.new(STDIN.each_char)
 reader = StreamReader.new(hex2bin)
 packets = PacketIterator.new(reader)
-puts packets.sum(&.version)
+puts packets.sum(&.sum_nested_versions)
