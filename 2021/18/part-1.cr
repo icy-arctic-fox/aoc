@@ -1,41 +1,51 @@
+require "colorize"
+
 EXPLODE = 4
+SPLIT   = 9
+DEBUG   = false
 
 abstract class Node
-  property parent : TupleNode?
+  property! parent : TupleNode?
 
-  def initialize(@parent : Node? = nil)
-  end
-
-  def +(other : Node)
-    TupleNode.new(self, other).tap do |node|
-      while node.reducible?
-        node.reduce
-      end
-    end
+  def initialize(@parent : TupleNode? = nil)
   end
 
   abstract def reducible?
 
+  def +(other : Node)
+    node = TupleNode.new(self, other)
+    puts "after addition: #{node}" if DEBUG
+    Reducer.new(node).reduce
+  end
+
+  def root
+    node = self
+    while parent = node.parent
+      node = parent
+    end
+    node
+  end
+
+  def left?
+    parent.try { |node| node.left == self }
+  end
+
+  def right?
+    parent.try { |node| node.right == self }
+  end
+
+  def flatten_all
+    root.flatten
+  end
+
   def level
     level = 1
     node = self
-    while parent = node.parent
+    while parent = node.parent?
       node = parent
       level += 1
     end
     level
-  end
-
-  def left?
-    if parent = @parent.as?(TupleNode)
-      parent.left == self
-    end
-  end
-
-  def right?
-    if parent = @parent.as?(TupleNode)
-      parent.right == self
-    end
   end
 end
 
@@ -61,38 +71,17 @@ class TupleNode < Node
   end
 
   def reducible?
-    needs_explode? || @left.reducible? || @right.reducible?
+    left.is_a?(ValueNode) && right.is_a?(ValueNode) && level > EXPLODE
   end
 
-  def needs_explode?
-    @left.is_a?(ValueNode) && @right.is_a?(ValueNode) && level > EXPLODE
-  end
+  def explode(left_value : ValueNode?, right_value : ValueNode?)
+    left = @left.as?(ValueNode)
+    right = @right.as?(ValueNode)
+    raise "Unexpected explosion of non-value tuple" unless left && right
 
-  def reduce
-    if needs_explode?
-      explode
-      true
-    elsif @left.reducible?
-      @left.reduce
-    elsif @right.reducible?
-      @right.reduce
-    else
-      false
-    end
-  end
-
-  private def explode
-    values = flatten
-    left = @left.as(ValueNode)
-    right = @right.as(ValueNode)
     left_value.try { |node| node.value += left.value }
     right_value.try { |node| node.value += right.value }
-    node = ValueNode.new(0)
-    if left?
-      parent.not_nil!.left = node
-    else
-      parent.not_nil!.right = node
-    end
+    ValueNode.new(0)
   end
 
   def flatten(array = [] of ValueNode)
@@ -107,68 +96,12 @@ class TupleNode < Node
     array
   end
 
-  def root
-    node = self
-    while parent = node.parent
-      node = parent
-    end
-    node
-  end
-
-  def flatten_all
-    root.flatten
-  end
-
-  private def left_sibling : Node?
-    return unless parent = @parent
-
-    if parent.right == self
-      parent.left
-    else
-      parent.try(&.parent.right)
-    end
-  end
-
-  private def right_sibling : Node?
-    return unless parent = @parent
-
-    if parent.left == self
-      parent.right
-    else
-      parent.try(&.parent.left)
-    end
-  end
-
-  private def left_value : ValueNode?
-    return unless parent = @parent
-
-    if parent.right == self && (left = parent.left).as?(ValueNode)
-      left.as(ValueNode)
-    else
-      values = flatten_all
-      index = values.index(@left).not_nil! - 1
-      values[index].as(ValueNode) if index >= 0
-    end
-  end
-
-  private def right_value : ValueNode?
-    return unless parent = @parent
-
-    if parent.left == self && (right = parent.right).as?(ValueNode)
-      right.as(ValueNode)
-    else
-      values = flatten_all
-      index = values.index(@right).not_nil! + 1
-      values[index].as(ValueNode) if index < values.size
-    end
-  end
-
   def to_s(io : IO) : Nil
-    io << '['
+    io << (level > EXPLODE ? '['.colorize(:red) : '[')
     left.to_s(io)
     io << ','
     right.to_s(io)
-    io << ']'
+    io << (level > EXPLODE ? ']'.colorize(:red) : ']')
   end
 end
 
@@ -179,24 +112,13 @@ class ValueNode < Node
   end
 
   def reducible?
-    @value > 9
-  end
-
-  def reduce
-    return false unless reducible?
-
-    if left?
-      @parent.as(TupleNode).left = split
-    else
-      @parent.as(TupleNode).right = split
-    end
-    true
+    @value > SPLIT
   end
 
   def split
-    left_value = value // 2
-    right_value = value // 2
-    right_value += 1 if left_value + right_value < value
+    left_value, mod = value.divmod(2)
+    right_value = left_value
+    right_value += 1 unless mod.zero?
     left = ValueNode.new(left_value)
     right = ValueNode.new(right_value)
     TupleNode.new(left, right)
@@ -204,6 +126,93 @@ class ValueNode < Node
 
   def to_s(io : IO) : Nil
     io << value
+  end
+end
+
+class NodeIterator
+  include Iterator(Node)
+
+  @stack = [] of Node
+
+  def initialize(@root : TupleNode)
+    @stack << @root
+  end
+
+  def next
+    return stop if @stack.empty?
+
+    node = @stack.pop
+    if node.is_a?(TupleNode)
+      @stack << node.right
+      @stack << node.left
+    end
+    node
+  end
+end
+
+class Reducer
+  def initialize(@root : TupleNode)
+  end
+
+  def reduce
+    loop do
+      explodable = explodable_nodes
+      splittable = splittable_nodes
+      break if explodable.empty? && splittable.empty?
+
+      explodable_nodes.each { |node| explode(node) }
+      splittable_nodes.first?.try { |node| split(node) }
+    end
+    @root
+  end
+
+  private def explode(node : TupleNode)
+    left = node.left.as?(ValueNode)
+    right = node.right.as?(ValueNode)
+    raise "Unexpected explosion of non-value tuple" unless left && right
+
+    value_nodes = @root.flatten
+    left_value = left_of(left, value_nodes)
+    right_value = right_of(right, value_nodes)
+    replacement = node.explode(left_value, right_value)
+    replace(node, replacement)
+    puts "after explode:  #{@root}" if DEBUG
+  end
+
+  private def split(node : ValueNode)
+    replacement = node.split
+    replace(node, replacement)
+    puts "after split:    #{@root}" if DEBUG
+  end
+
+  private def replace(old, new)
+    if old.left?
+      old.parent.left = new
+    else
+      old.parent.right = new
+    end
+  end
+
+  private def left_of(node : ValueNode, value_nodes)
+    index = value_nodes.index(node).not_nil! - 1
+    value_nodes[index] if index >= 0
+  end
+
+  private def right_of(node : ValueNode, value_nodes)
+    index = value_nodes.index(node).not_nil! + 1
+    value_nodes[index] if index < value_nodes.size
+  end
+
+  private def explodable_nodes : Iterator(TupleNode)
+    each_node.select(TupleNode).select(&.reducible?)
+  end
+
+  private def splittable_nodes : Iterator(ValueNode)
+    each_node.select(ValueNode).select(&.reducible?)
+  end
+
+  private def each_node : Iterator(Node)
+    NodeIterator.new(@root)
   end
 end
 
