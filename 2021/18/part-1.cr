@@ -12,6 +12,8 @@ abstract class Node
 
   abstract def reducible?
 
+  abstract def magnitude
+
   def +(other : Node)
     node = TupleNode.new(self, other)
     puts "after addition: #{node}" if DEBUG
@@ -74,6 +76,10 @@ class TupleNode < Node
     left.is_a?(ValueNode) && right.is_a?(ValueNode) && level > EXPLODE
   end
 
+  def magnitude
+    3 * @left.magnitude + 2 * @right.magnitude
+  end
+
   def explode(left_value : ValueNode?, right_value : ValueNode?)
     left = @left.as?(ValueNode)
     right = @right.as?(ValueNode)
@@ -113,6 +119,10 @@ class ValueNode < Node
 
   def reducible?
     @value > SPLIT
+  end
+
+  def magnitude
+    @value
   end
 
   def split
@@ -278,4 +288,4 @@ node = STDIN.each_line(chomp: true).sum(node) do |line|
   reader = NodeReader.new(line)
   reader.read
 end
-puts node
+puts node.magnitude
