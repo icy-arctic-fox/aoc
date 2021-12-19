@@ -1,4 +1,31 @@
-alias Point = Tuple(Int32, Int32, Int32)
+THRESHOLD = 12
+DEBUG     = false
+
+record Point, x : Int32, y : Int32, z : Int32 do
+  def distance(other : self)
+    (other.x - x).abs + (other.y - y).abs + (other.z - z).abs
+  end
+
+  def offset(other : self) : self
+    self.class.new(x - other.x, y - other.y, z - other.z)
+  end
+
+  def +(other : self) : self
+    self.class.new(x + other.x, y + other.y, z + other.z)
+  end
+
+  def -(other : self) : self
+    self.class.new(x - other.x, y - other.y, z - other.z)
+  end
+
+  def - : self
+    self.class.new(-x, -y, -z)
+  end
+
+  def to_s(io : IO) : Nil
+    io << '(' << x << ", " << y << ", " << z << ')'
+  end
+end
 
 struct Matrix
   @mat : Array(Int32)
@@ -6,12 +33,12 @@ struct Matrix
   def initialize(@mat : Array(Int32))
   end
 
-  def *(point : Point)
-    {
-      point[0] * @mat[0] + point[1] * @mat[1] + point[2] * @mat[2],
-      point[0] * @mat[3] + point[1] * @mat[4] + point[2] * @mat[5],
-      point[0] * @mat[6] + point[1] * @mat[7] + point[2] * @mat[8],
-    }
+  def *(point : Point) : Point
+    Point.new(
+      point.x * @mat[0] + point.y * @mat[1] + point.z * @mat[2],
+      point.x * @mat[3] + point.y * @mat[4] + point.z * @mat[5],
+      point.x * @mat[6] + point.y * @mat[7] + point.z * @mat[8],
+    )
   end
 end
 
@@ -21,9 +48,32 @@ class Scanner
   def initialize(@beacons : Array(Point))
   end
 
+  def align(other : self) : Point?
+    offsets = {} of Point => Int32
+    @beacons.each_cartesian(other.beacons) do |(a, b)|
+      offset = a.offset(b)
+      offsets[offset] = offsets.has_key?(offset) ? offsets[offset] + 1 : 1
+    end
+    offset, count = offsets.max_by(&.[1])
+    return offset if count >= THRESHOLD
+  end
+
+  def find_aligned_rotation(other : self) : Tuple(Scanner, Point)?
+    each_rotation do |rotation|
+      offset = other.align(rotation)
+      return rotation, offset if offset
+    end
+  end
+
+  def translate(offset : Point) : self
+    beacons = @beacons.map { |point| point + offset }
+    Scanner.new(beacons)
+  end
+
   def each_rotation
     each_rotation_matrix do |matrix|
-      yield @beacons.map { |point| matrix * point }
+      beacons = @beacons.map { |point| matrix * point }
+      yield Scanner.new(beacons)
     end
   end
 
@@ -67,11 +117,34 @@ STDIN.each_line(chomp: true) do |line|
     scanners[i] = scanner
   else
     coords = line.split(',', 3).map(&.to_i)
-    points << coords.values_at(0, 1, 2)
+    points << Point.new(*coords.values_at(0, 1, 2))
   end
 end
 
-rotations = [] of Array(Point)
-scanners.values.first.each_rotation do |beacons|
-  rotations << beacons
+scanner0 = scanners.delete(0)
+raise "Can't find scanner 0" unless scanner0
+
+aligned = {0 => scanner0}
+
+remaining = scanners.to_a
+until remaining.empty?
+  index, scanner = remaining.shift
+  puts "Aligning #{index}..." if DEBUG
+  found = aligned.each do |ref_index, ref_rotation|
+    if alignment = scanner.find_aligned_rotation(ref_rotation)
+      rotation, offset = alignment
+      puts "Found alignment against #{ref_index}, translation: #{offset}" if DEBUG
+      aligned[index] = rotation.translate(offset)
+      puts aligned[index].beacons.map(&.to_s).join("\n") if DEBUG
+      break true
+    end
+  end
+  remaining << {index, scanner} unless found
 end
+
+beacons = aligned.values.flat_map(&.beacons).uniq
+if DEBUG
+  puts "===================="
+  beacons.each { |b| puts b }
+end
+puts beacons.size
