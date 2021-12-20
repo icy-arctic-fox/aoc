@@ -57,11 +57,18 @@ record Bounds, x : Int32, y : Int32, width : Int32, height : Int32 do
 end
 
 class Image
-  def initialize(@bounds : Bounds)
+  def initialize(@bounds : Bounds, @default : Bool)
     @pixels = BitArray.new(@bounds.size)
   end
 
-  def initialize(width, height, & : Int32, Int32 -> Bool)
+  def initialize(@bounds : Bounds, @default : Bool, & : Int32, Int32 -> Bool)
+    @pixels = BitArray.new(@bounds.size)
+    @bounds.each_with_index do |x, y, i|
+      @pixels[i] = yield x, y
+    end
+  end
+
+  def initialize(width, height, @default : Bool, & : Int32, Int32 -> Bool)
     @bounds = Bounds.new(0, 0, width, height)
     @pixels = BitArray.new(@bounds.size)
     @bounds.each_with_index do |x, y, i|
@@ -90,12 +97,16 @@ class Image
 
   def enhance(algo)
     bounds = @bounds.expand(PADDING)
-    InfiniteImage.new(self, algo, bounds)
+    swap = algo.first
+    Image.new(bounds, swap ? !@default : @default) do |x, y|
+      value = sample(x, y)
+      algo[value]
+    end
   end
 
-  def light_count
+  def light_count(bounds = @bounds)
     count = 0
-    @bounds.each do |x, y|
+    bounds.each do |x, y|
       count += 1 if self[x, y]
     end
     count
@@ -105,7 +116,7 @@ class Image
     if @bounds.includes?(x, y)
       @pixels[index(x, y)]
     else
-      false
+      @default
     end
   end
 
@@ -118,29 +129,6 @@ class Image
 
   private def index(x, y)
     @bounds.index(x, y)
-  end
-end
-
-class InfiniteImage < Image
-  def initialize(@source : Image, @algo : BitArray, bounds : Bounds)
-    super(bounds)
-    cache
-  end
-
-  def cache
-    @bounds.each_with_index do |x, y, i|
-      value = @source.sample(x, y)
-      @pixels[i] = @algo[value]
-    end
-  end
-
-  def [](x, y)
-    if @bounds.includes?(x, y)
-      @pixels[index(x, y)]
-    else
-      value = @source.sample(x, y)
-      @algo[value]
-    end
   end
 end
 
@@ -164,7 +152,8 @@ end
 
 width = buffered.first.size
 height = buffered.size
-image = Image.new(width, height) do |x, y|
+default = algo.first == algo.last
+image = Image.new(width, height, default) do |x, y|
   buffered[y][x]
 end
 buffered.clear
