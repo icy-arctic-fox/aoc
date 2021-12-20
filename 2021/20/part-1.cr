@@ -2,6 +2,8 @@ require "bit_array"
 
 LIGHT = '#'
 DARK  = '.'
+SCALE = 2
+DEBUG = false
 
 class Image
   getter width : Int32
@@ -36,14 +38,21 @@ class Image
   end
 
   def enhance(algo)
-    enhanced = Image.new(width + 2, height + 2) do |x, y|
-      value = sample(x - 1, y - 1)
-      algo[value]
-    end
+    InfiniteImage.new(self, algo)
   end
 
   def light_count
     @pixels.count(true)
+  end
+
+  def light_count(width, height, x = 0, y = 0)
+    count = 0
+    height.times do |j|
+      width.times do |i|
+        count += 1 if self[i + x, j + y]
+      end
+    end
+    count
   end
 
   def [](x, y)
@@ -67,8 +76,45 @@ class Image
     end
   end
 
+  def to_s(io : IO, width, height, x = 0, y = 0) : Nil
+    height.times do |j|
+      width.times do |i|
+        io.print self[i + x, j + y] ? LIGHT : DARK
+      end
+      io.puts
+    end
+  end
+
   private def index(x, y)
     y * width + x
+  end
+end
+
+class InfiniteImage < Image
+  def initialize(@source : Image, @algo : BitArray)
+    @pixels = BitArray.new(0)
+    @width = -1
+    @height = -1
+  end
+
+  def sample(x, y)
+    value = 0
+    ((y - 1).to(y + 1)).each do |j|
+      ((x - 1).to(x + 1)).each do |i|
+        value <<= 1
+        value |= (@source[i - 1, j - 1] ? 1 : 0)
+      end
+    end
+    value
+  end
+
+  def enhance(algo = @algo)
+    InfiniteImage.new(self, algo)
+  end
+
+  def [](x, y)
+    value = sample(x, y)
+    @algo[value]
   end
 end
 
@@ -97,9 +143,14 @@ image = Image.new(width, height) do |x, y|
 end
 buffered.clear
 
-2.times do
-  puts image
+SCALE.times do |i|
+  if DEBUG
+    image.to_s(STDOUT, width + 2 * i, height + 2 * i)
+    puts
+  end
+
   image = image.enhance(algo)
 end
-puts image
-puts image.light_count
+
+image.to_s(STDOUT, width + 2 * SCALE, height + 2 * SCALE) if DEBUG
+puts image.light_count(width + 2 * SCALE, height + 2 * SCALE)
