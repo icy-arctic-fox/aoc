@@ -7,55 +7,94 @@ record Cuboid,
   def size
     x.size * y.size * z.size
   end
-
-  def intersect?(other : self)
-    x.begin <= other.x.end &&
-      x.end >= other.x.begin &&
-      y.begin <= other.y.end &&
-      y.end >= other.y.begin &&
-      z.begin <= other.z.end &&
-      z.end >= other.z.begin
-  end
-
-  def intersection?(other : self) : self?
-    return unless intersect?(other)
-
-    x1 = Math.max(x.begin, other.x.begin)
-    x2 = Math.min(x.end, other.x.end)
-    y1 = Math.max(y.begin, other.y.begin)
-    y2 = Math.min(y.end, other.y.end)
-    z1 = Math.max(z.begin, other.z.begin)
-    z2 = Math.min(z.end, other.z.end)
-    Cuboid.new(x1..x2, y1..y2, z1..z2)
-  end
 end
 
 record Step, powered : Bool, cuboid : Cuboid
 
+class Cut
+  property position : Int64
+  property? powered : Bool
+
+  def initialize(@position, @powered)
+  end
+end
+
 struct Grid
-  @steps = [] of Step
+  @x_axis : Array(Cut)
+  @y_axis : Array(Cut)
+  @z_axis : Array(Cut)
+
+  def initialize(cuboid : Cuboid)
+    @x_axis = [
+      Cut.new(cuboid.x.begin, false),
+      Cut.new(cuboid.x.end, false),
+    ]
+    @y_axis = [
+      Cut.new(cuboid.y.begin, false),
+      Cut.new(cuboid.y.end, false),
+    ]
+    @z_axis = [
+      Cut.new(cuboid.z.begin, false),
+      Cut.new(cuboid.z.end, false),
+    ]
+  end
 
   def add(step : Step)
-    intersections = @steps.compact_map do |s|
-      next unless c = s.cuboid.intersection?(step.cuboid)
+    insert(@x_axis, step.cuboid.x, step.powered)
+    insert(@y_axis, step.cuboid.y, step.powered)
+    insert(@z_axis, step.cuboid.z, step.powered)
+  end
 
-      puts s
-      puts step
-      puts c.size
-
-      Step.new(s.powered ^ step.powered, c).tap { |v| puts v; puts }
-    end
-
-    @steps << step
-    @steps.concat(intersections)
+  private def insert(axis, range, powered)
+    start = Cut.new(range.begin, powered)
+    finish = Cut.new(range.end + 1, powered)
+    axis << start
+    axis << finish
+    axis.sort_by!(&.position)
+    start_index = axis.index(start).not_nil!
+    finish_index = axis.index(finish, start_index).not_nil!
+    reset = axis[finish_index + 1].powered?
+    axis[start_index...finish_index].each { |c| c.powered = powered }
+    axis[finish_index].powered = reset
   end
 
   def powered
-    @steps.sum do |s|
-      s.powered ? s.cuboid.size : -s.cuboid.size
+    sum = 0_i64
+    @x_axis.each_cons_pair do |cx1, cx2|
+      x1 = cx1.position
+      x2 = cx2.position
+      @y_axis.each_cons_pair do |cy1, cy2|
+        y1 = cy1.position
+        y2 = cy2.position
+        @z_axis.each_cons_pair do |cz1, cz2|
+          z1 = cz1.position
+          z2 = cz2.position
+
+          powered = cx1.powered? && cy1.powered? && cz1.powered?
+          # puts "#{cuboid.colorize(powered ? :green : :red)} = #{cuboid.size}"
+          sum += ((z2 - z1) * (y2 - y1) * (x2 - x1)) if powered
+        end
+      end
+    end
+    sum
+  end
+
+  def to_s(io : IO) : Nil
+    @x_axis.each do |cut|
+      io.print "#{cut.position} | ".colorize(cut.powered? ? :green : :red)
+    end
+    puts
+    @y_axis.each do |cut|
+      io.print "#{cut.position} - ".colorize(cut.powered? ? :green : :red)
+    end
+    puts
+    @z_axis.each do |cut|
+      io.print "#{cut.position} / ".colorize(cut.powered? ? :green : :red)
     end
   end
 end
+
+require "colorize"
 
 steps = STDIN.each_line(chomp: true).compact_map do |line|
   next unless m = line.match(/(on|off)\s+x=(-?\d+)\.\.(-?\d+),y=(-?\d+)\.\.(-?\d+),z=(-?\d+)\.\.(-?\d+)/)
@@ -66,10 +105,22 @@ steps = STDIN.each_line(chomp: true).compact_map do |line|
   z = (m[6].to_i64)..(m[7].to_i64)
   cuboid = Cuboid.new(x, y, z)
   Step.new(powered, cuboid)
-end
+end.to_a
 
-grid = Grid.new
+min_x = Math.min(-50_i64, steps.min_of(&.cuboid.x.begin))
+max_x = Math.max(50_i64, steps.max_of(&.cuboid.x.end))
+min_y = Math.min(-50_i64, steps.min_of(&.cuboid.y.begin))
+max_y = Math.max(50_i64, steps.max_of(&.cuboid.y.end))
+min_z = Math.min(-50_i64, steps.min_of(&.cuboid.z.begin))
+max_z = Math.max(50_i64, steps.max_of(&.cuboid.z.end))
+cube = Cuboid.new(min_x..max_x, min_y..max_y, min_z..max_z)
+
+grid = Grid.new(cube)
 steps.each do |step|
+  puts grid
+  puts grid.powered
+  puts
   grid.add(step)
 end
+puts grid
 puts grid.powered
