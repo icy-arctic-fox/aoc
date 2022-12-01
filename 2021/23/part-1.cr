@@ -174,6 +174,7 @@ end
 class Solver
   @solutions = Array(Array(Move)).new
   @max_energy = Int32::MAX
+  @seen = Set(Grid).new
 
   def initialize(@initial : Grid)
   end
@@ -181,6 +182,7 @@ class Solver
   def solve
     @solutions = Array(Array(Move)).new
     @max_energy = Int32::MAX
+    @seen = Set(Grid).new
 
     state = State.new(@initial)
     each_move(state) do |move|
@@ -192,27 +194,37 @@ class Solver
   end
 
   private def backtrack(state, move)
-    return unless legal?(state.grid, move)
+    return false unless legal?(state.grid, move)
 
     next_state = state.apply(move)
-    return if reject?(next_state)
-    return if next_state.energy > @max_energy
+    return false if @seen.includes?(next_state)
+    return false if reject?(next_state, move)
+    return false if next_state.energy > @max_energy
 
+    puts next_state.grid
     if next_state.grid.solution?
       @solutions << next_state.moves
       @max_energy = Math.min(next_state.energy, @max_energy)
+      return true
       puts "SOLUTION:"
       puts next_state.moves
       puts next_state.grid
     end
 
+    found = false
     each_move(next_state) do |move|
-      backtrack(next_state, move)
+      found ||= backtrack(next_state, move)
     end
+    @seen.add(next_state.grid) unless found
+    found
   end
 
-  private def reject?(state)
-    hallway_blocked?(state)
+  private def reject?(state, move)
+    same_room?(move) #|| hallway_blocked?(state)
+  end
+
+  private def same_room?(move)
+    move.from[0] == move.to[0] && (move.from[1] - move.to[1]).abs <= 1
   end
 
   private def hallway_blocked?(state)
@@ -306,7 +318,7 @@ class Solver
   private def cell_target(cell)
     case cell
                when .amber?  then 3
-               when .bronze? then 5
+               when .bronze? then 5 
                when .copper? then 7
                when .desert? then 9
                else               raise "Unexpected non-amphipod"
@@ -324,4 +336,6 @@ end
 puts grid
 
 solutions = Solver.new(grid).solve
-puts solutions
+best = solutions.min_by(&.sum(&.energy))
+puts best
+puts best.sum(&.energy)
