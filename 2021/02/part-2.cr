@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 horizontal = 0
 depth = 0
 aim = 0

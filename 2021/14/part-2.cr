@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 alias Pair = Tuple(Char, Char)
 
 module Iterator(T)

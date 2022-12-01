@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 require "bit_array"
 
 private def lower_neighbor?(x, y, w, h, map)

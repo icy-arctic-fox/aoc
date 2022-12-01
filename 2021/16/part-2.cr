@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 class HexToBinaryIterator
   include Iterator(Bool)
 

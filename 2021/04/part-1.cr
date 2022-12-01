@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 require "bit_array"
 
 ROWS  = 5

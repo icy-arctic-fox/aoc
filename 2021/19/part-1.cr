@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 THRESHOLD = 12
 DEBUG     = false
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 require "bit_array"
 
 private def neighbors(x, y, w, h)

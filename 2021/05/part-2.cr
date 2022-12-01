@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 record Point, x : Int32, y : Int32
 record Line, a : Point, b : Point
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 require "bit_array"
 
 record Cuboid,
@@ -35,7 +37,7 @@ xs.each_cons_pair do |x1, x2|
       z_steps = y_steps.select { |step| step.cuboid.z.includes?(z1) }
       z_steps.each do |step|
         break unless step.powered
-        
+
         size = (x2 - x1) * (y2 - y1) * (z2 - z1)
         sum += size
         break

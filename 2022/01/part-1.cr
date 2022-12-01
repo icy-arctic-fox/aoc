@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 calories = [0]
 
 STDIN.each_line do |line|

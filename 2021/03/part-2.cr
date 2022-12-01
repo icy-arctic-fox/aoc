@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 def count_bits(lines, index)
   zeroes = 0
   ones = 0
@@ -18,9 +20,9 @@ def compute(lines)
   keep = lines.dup
   length.times do |index|
     break if keep.size == 1
-  
+
     zeroes, ones = count_bits(keep, index)
-  
+
     char = yield(ones >= zeroes)
     keep.select! { |line| line[index] == char }
   end

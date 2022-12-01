@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 positions = STDIN.gets(chomp: true).try(&.split(',').map(&.to_i))
 raise "Missing positions" unless positions
 

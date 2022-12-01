@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 START  = "start"
 FINISH = "end"
 

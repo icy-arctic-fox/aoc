@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 require "colorize"
 
 EXPLODE = 4

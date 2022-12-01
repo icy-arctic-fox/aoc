@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 WIDTH  = 10
 HEIGHT = 10
 SIZE   = WIDTH * HEIGHT

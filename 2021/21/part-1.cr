@@ -1,5 +1,7 @@
-SIDES = 100
-BOARD = 10
+#!/usr/bin/env crystal
+
+SIDES =  100
+BOARD =   10
 SCORE = 1000
 
 positions = STDIN.each_line(chomp: true).map do |line|

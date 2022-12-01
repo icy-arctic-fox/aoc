@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 record Coord, x : Int32, y : Int32 do
   def each_neighbor(w, h)
     yield Coord.new(x + 1, y) if x + 1 < w

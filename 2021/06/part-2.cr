@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 DAYS    = 256
 RESET   =   6
 NEW     =   8

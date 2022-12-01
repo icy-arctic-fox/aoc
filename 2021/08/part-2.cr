@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 def solve_unique(digits, solved)
   digits.each do |digit|
     case digit.size

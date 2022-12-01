@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 zeroes = StaticArray(Int32, 16).new(0)
 ones = StaticArray(Int32, 16).new(0)
 length = 0

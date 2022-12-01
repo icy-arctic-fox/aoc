@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 polymer = gets(chomp: true).not_nil!
 gets
 

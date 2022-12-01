@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 SIDES =  3
 ROLLS =  3
 BOARD = 10

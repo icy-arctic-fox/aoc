@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 POINTS = {
   '(' => 1,
   '[' => 2,

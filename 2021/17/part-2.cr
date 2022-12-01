@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 DRAG    = 1
 GRAVITY = 1
 

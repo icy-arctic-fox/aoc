@@ -1,3 +1,5 @@
+#!/usr/bin/env crystal
+
 enum Cell
   Void
   Open
@@ -220,7 +222,7 @@ class Solver
   end
 
   private def reject?(state, move)
-    same_room?(move) #|| hallway_blocked?(state)
+    same_room?(move) # || hallway_blocked?(state)
   end
 
   private def same_room?(move)
@@ -317,12 +319,12 @@ class Solver
 
   private def cell_target(cell)
     case cell
-               when .amber?  then 3
-               when .bronze? then 5 
-               when .copper? then 7
-               when .desert? then 9
-               else               raise "Unexpected non-amphipod"
-               end
+    when .amber?  then 3
+    when .bronze? then 5
+    when .copper? then 7
+    when .desert? then 9
+    else               raise "Unexpected non-amphipod"
+    end
   end
 end
 
