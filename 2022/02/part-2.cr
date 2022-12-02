@@ -49,13 +49,13 @@ enum Shape
     return self if result.draw?
 
     case {self, result}
-    when {Rock, Result::Win}      then Paper
-    when {Rock, Result::Loss}     then Scissors
-    when {Paper, Result::Win}     then Scissors
-    when {Paper, Result::Loss}    then Rock
-    when {Scissors, Result::Win}  then Rock
-    when {Scissors, Result::Loss} then Paper
-    else                               raise "Unknown combination #{self} with #{result}"
+    when {Rock, .win?}      then Paper
+    when {Rock, .loss?}     then Scissors
+    when {Paper, .win?}     then Scissors
+    when {Paper, .loss?}    then Rock
+    when {Scissors, .win?}  then Rock
+    when {Scissors, .loss?} then Paper
+    else                         raise "Unknown combination #{self} with #{result}"
     end
   end
 end
