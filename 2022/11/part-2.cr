@@ -1,7 +1,7 @@
 #!/usr/bin/env crystal
 
 struct Operation
-  def initialize(@operation : Char, @modifier : Int32)
+  def initialize(@operation : Char, @modifier : Int64)
   end
 
   def self.parse(line)
@@ -10,21 +10,22 @@ struct Operation
 
     if m[2] == "old"
       operation = '^'
-      modifier = 2
+      modifier = 2_i64
     else
       operation = m[1][0]
-      modifier = m[2].to_i
+      modifier = m[2].to_i64
     end
     new(operation, modifier)
   end
 
-  def apply(value)
-    case @operation
-    when '*' then value * @modifier
-    when '+' then value + @modifier
-    when '^' then value ** @modifier
-    else          raise "Unrecognized operation '#{@operation}'"
-    end
+  def apply(value, lcm)
+    value = case @operation
+            when '*' then value * @modifier
+            when '+' then value + @modifier
+            when '^' then value ** @modifier
+            else          raise "Unrecognized operation '#{@operation}'"
+            end
+    value % lcm
   end
 
   def to_s(io : IO) : Nil
@@ -33,6 +34,8 @@ struct Operation
 end
 
 struct Test
+  getter divisor
+
   def initialize(@divisor : Int32, @true : Int32, @false : Int32)
   end
 
@@ -80,87 +83,12 @@ struct Test
   end
 end
 
-struct PrimeFactorization
-  PRIME_CACHE = {} of Int32 => Bool
-
-  def initialize(@factors : Hash(Int32, Int32))
-  end
-
-  def initialize(value)
-    @factors = factorize(value)
-  end
-
-  def divisible_by?(value : Int)
-    raise "Can only check divisible by with primes!" unless prime?(value)
-
-    @factors.has_key?(value)
-  end
-
-  def *(value : Int)
-    factors = factorize(value)
-    factors = merge(factors)
-    self.class.new(factors)
-  end
-
-  def +(value : Int)
-    raise "oof"
-  end
-
-  def **(value : Int)
-    factors = @factors.transform_values do |count|
-      count * value
-    end
-    self.class.new(factors)
-  end
-
-  def to_s(io : IO) : Nil
-    @factors.join(io, " x ") do |(prime, count), h|
-      h << prime << '^' << count
-    end
-  end
-
-  private def factorize(value, factors = {} of Int32 => Int32) : Hash
-    if prime?(value)
-      factors[value] = factors.fetch(value, 0) + 1
-      return factors
-    end
-
-    3.step(to: value // 2, by: 2).find do |i|
-      next unless prime?(i)
-
-      count, mod = value.divmod(i)
-      next unless mod == 0
-
-      factors[i] = factors.fetch(i, 0) + 1
-      return factorize(count, factors)
-    end
-
-    factors
-  end
-
-  private def prime?(value)
-    return true if value == 2
-    return false if value.divisible_by?(2)
-
-    PRIME_CACHE.fetch(value) do
-      prime = 3.step(to: value // 2, by: 2).none? { |i| value.divisible_by?(i) }
-      PRIME_CACHE[value] = prime
-    end
-  end
-
-  private def merge(factors) : Hash
-    @factors.merge(factors) do |_prime, count1, count2|
-      count1 + count2
-    end
-  end
-end
-
 class Monkey
-  @items : Array(PrimeFactorization)
+  @items : Array(Int64)
   @operation : Operation
   @test : Test
 
-  getter inspections = 0
+  getter inspections = 0_i64
 
   def initialize(@items, @operation, @test)
   end
@@ -170,21 +98,25 @@ class Monkey
     m = line.match(/Starting items:\s*((\d+,?\s*)+)/)
     raise "Malformed starting items" unless m
 
-    items = m[1].split(/,\s+/).map { |str| PrimeFactorization.new(str.to_i) }
+    items = m[1].split(/,\s+/).map &.to_i64
     line = io.gets || raise "Unexpected end of input"
     operation = Operation.parse(line)
     test = Test.parse(io)
     new(items, operation, test)
   end
 
+  def test_divisor
+    @test.divisor
+  end
+
   def add(item)
     @items << item
   end
 
-  def update(monkeys)
+  def update(monkeys, lcm)
     @inspections += @items.size
     @items.each do |item|
-      value = @operation.apply(item)
+      value = @operation.apply(item, lcm)
       @test.perform(value, monkeys)
     end
     @items.clear
@@ -210,15 +142,12 @@ STDIN.each_line do |line|
   monkeys << Monkey.parse(STDIN)
 end
 
-monkeys.each do |monkey|
-  puts monkey
-end
-puts(PrimeFactorization.new(9) ** 3)
-exit
+# Note that all divisible checks are against prime numbers!
+lcm = monkeys.product &.test_divisor
 
 10_000.times do
   monkeys.each do |monkey|
-    monkey.update(monkeys)
+    monkey.update(monkeys, lcm)
   end
 end
 
