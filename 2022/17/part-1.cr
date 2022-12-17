@@ -368,6 +368,7 @@ loop do
   moved = case c
           when '<' then sim.move_left
           when '>' then sim.move_right
+          else          next
           end
 
   sim.preview if DEBUG > 1
