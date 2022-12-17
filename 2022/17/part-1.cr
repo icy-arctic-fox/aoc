@@ -56,6 +56,26 @@ module Flat2D
     x.in?(0...width) && y.in?(0...height)
   end
 
+  def each_y
+    height.times do |y_inv|
+      yield height - y_inv - 1
+    end
+  end
+
+  def each_x
+    width.times do |x|
+      yield x
+    end
+  end
+
+  def each_coords
+    each_y do |y|
+      each_x do |x|
+        yield x, y
+      end
+    end
+  end
+
   abstract def unsafe_fetch(index : Int)
   abstract def unsafe_put(index : Int, value)
 end
@@ -129,9 +149,12 @@ struct Shape
   end
 
   def to_s(io : IO, char = '#') : Nil
-    @shape.each_with_index do |b, i|
-      io.puts if i.divisible_by?(width) && i > 0
-      io << (b ? char : '.')
+    height.times do |y_inv|
+      io.puts if y_inv > 0
+      y = height - y_inv - 1
+      width.times do |x|
+        io << (self[x, y] ? char : '.')
+      end
     end
   end
 end
@@ -240,7 +263,6 @@ class Simulation
   private def solidify : Nil
     @grid.resize(width, height) if width > @grid.width || height > @grid.height
     @shape.apply(@grid, @shape_x, @shape_y)
-    puts self, shape_count if DEBUG > 0
   end
 
   private def spawn_shape : Shape
@@ -253,10 +275,9 @@ class Simulation
   end
 
   def to_s(io : IO) : Nil
-    height.times do |y_inv|
-      y = height - y_inv - 1
+    each_y do |y|
       io << '|'
-      width.times do |x|
+      each_x do |x|
         char = if in_shape?(x, y) && @shape[*shape_coords(x, y)]
                  '@'
                elsif @grid[x, y]?
@@ -272,6 +293,47 @@ class Simulation
     io << '+'
     width.times { io << '-' }
     io << '+'
+  end
+
+  PREVIEW = 20
+
+  def preview(io : IO = STDOUT) : Nil
+    min_y = {0, @shape_y - PREVIEW}.max
+    max_y = {height, @shape_y + @shape.height + PREVIEW}.min
+    puts "DRAW #{max_y}..#{min_y}"
+    max_y.step(to: min_y) do |y|
+      io << '|'
+      each_x do |x|
+        char = if in_shape?(x, y) && @shape[*shape_coords(x, y)]
+                 '@'
+               elsif @grid[x, y]?
+                 '#'
+               else
+                 '.'
+               end
+        io << char
+      end
+      io << '|'
+      io.puts
+    end
+
+    return if min_y > 0
+    io << '+'
+    width.times { io << '-' }
+    io << '+'
+    io.puts
+  end
+
+  private def each_y
+    height.times do |y_inv|
+      yield height - y_inv - 1
+    end
+  end
+
+  private def each_x
+    width.times do |x|
+      yield x
+    end
   end
 
   private def in_shape?(x, y)
@@ -300,18 +362,19 @@ loop do
   c = moves.next
   if DEBUG > 2
     puts "Next input: #{c}"
-    sleep 5
+    sleep 0.05
   end
 
-  case c
-  when '<' then sim.move_left
-  when '>' then sim.move_right
-  end
+  moved = case c
+          when '<' then sim.move_left
+          when '>' then sim.move_right
+          end
 
-  puts sim if DEBUG > 1
+  sim.preview if DEBUG > 1
+  puts "Collided: #{!moved}" if DEBUG > 1
   sim.update
   break if sim.shape_count >= 2022
-  puts "Moved down", sim if DEBUG > 1
+  puts "Moved down" if DEBUG > 1
 end
 
 puts sim if DEBUG > 0
