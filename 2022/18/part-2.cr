@@ -13,7 +13,23 @@ record Cube, x : Int32, y : Int32, z : Int32 do
       nx = x + rx
       ny = y + ry
       nz = z + rz
-      yield grid[nx, ny, nz] if grid.in_bounds?(nx, ny, nz)
+      neighbor = grid[nx, ny, nz]?
+      yield neighbor unless neighbor.nil?
+    end
+  end
+
+  def each_neighbor_coords(grid)
+    NEIGHBOR_RELATIVE_COORDS.each do |(rx, ry, rz)|
+      nx = x + rx
+      ny = y + ry
+      nz = z + rz
+      yield nx, ny, nz if grid.in_bounds?(nx, ny, nz)
+    end
+  end
+
+  def each_neighboring_cube(grid)
+    each_neighbor_coords(grid) do |x, y, z|
+      yield Cube.new(x, y, z) if grid[x, y, z]
     end
   end
 
@@ -88,6 +104,14 @@ class Grid
     @grid = BitArray.new(@width * @height * @depth)
   end
 
+  def initialize(@width : Int32, @height : Int32, @depth : Int32, @grid : BitArray)
+    raise "Size mismatch" if @width * @height * @depth != @grid.size
+  end
+
+  def volume
+    width * height * depth
+  end
+
   def unsafe_fetch(index : Int)
     @grid.unsafe_fetch(index)
   end
@@ -96,79 +120,25 @@ class Grid
     @grid.unsafe_put(index, value)
   end
 
-  def count_left_surfaces
+  def flood_fill(x, y, z)
+    filled = clone
+    queue = [Cube.new(x, y, z)]
     count = 0
-    depth.times do |z|
-      height.times do |y|
-        width.times do |x|
-          break count += 1 if self[x, y, z]
+    while cube = queue.pop?
+      count += cube.count_neighboring_cubes(self)
+      filled[cube.x, cube.y, cube.z] = true
+      cube.each_neighbor_coords(self) do |nx, ny, nz|
+        unless filled[nx, ny, nz]
+          queue << Cube.new(nx, ny, nz)
+          filled[nx, ny, nz] = true
         end
       end
     end
     count
   end
 
-  def count_right_surfaces
-    count = 0
-    depth.times do |z|
-      height.times do |y|
-        width.times do |x_inv|
-          x = width - x_inv - 1
-          break count += 1 if self[x, y, z]
-        end
-      end
-    end
-    count
-  end
-
-  def count_front_surfaces
-    count = 0
-    width.times do |x|
-      height.times do |y|
-        depth.times do |z|
-          break count += 1 if self[x, y, z]
-        end
-      end
-    end
-    count
-  end
-
-  def count_back_surfaces
-    count = 0
-    width.times do |x|
-      height.times do |y|
-        depth.times do |z_inv|
-          z = depth - z_inv - 1
-          break count += 1 if self[x, y, z]
-        end
-      end
-    end
-    count
-  end
-
-  def count_top_surfaces
-    count = 0
-    width.times do |x|
-      depth.times do |z|
-        height.times do |y_inv|
-          y = height - y_inv - 1
-          break count += 1 if self[x, y, z]
-        end
-      end
-    end
-    count
-  end
-
-  def count_bottom_surfaces
-    count = 0
-    width.times do |x|
-      depth.times do |z|
-        height.times do |y|
-          break count += 1 if self[x, y, z]
-        end
-      end
-    end
-    count
+  def clone
+    self.class.new(@width, @height, @depth, @grid.dup)
   end
 end
 
@@ -177,7 +147,10 @@ grid = Grid.new(20, 20, 20)
 cubes.each do |cube|
   grid[cube.x, cube.y, cube.z] = true
 end
-sum = grid.count_left_surfaces + grid.count_right_surfaces +
-      grid.count_front_surfaces + grid.count_back_surfaces +
-      grid.count_top_surfaces + grid.count_bottom_surfaces
-puts sum
+count = grid.flood_fill(0, 0, 0)
+count += cubes.sum do |cube|
+  ((cube.x == 0 || cube.x == 19) ? 1 : 0) +
+    ((cube.y == 0 || cube.y == 19) ? 1 : 0) +
+    ((cube.z == 0 || cube.z == 19) ? 1 : 0)
+end
+puts count
