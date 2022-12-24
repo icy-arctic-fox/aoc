@@ -45,6 +45,13 @@ enum Cell
     end
   end
 
+  def blizzard?
+    case self
+    when .left?, .right?, .up?, .down? then true
+    else                                    false
+    end
+  end
+
   def to_s(io : IO) : Nil
     io << char
   end
@@ -111,6 +118,34 @@ class Grid
     new(width, height, grid)
   end
 
+  def in_bounds?(x, y)
+    x.in?(0...width) && y.in?(0...height)
+  end
+
+  def each_with_coordinates
+    x = 0
+    y = 0
+    @grid.each do |cell|
+      yield cell, x, y
+      x += 1
+      if x >= width
+        x = 0
+        y += 1
+      end
+    end
+  end
+
+  def each_blizzard_with_coordinates
+    each_with_coordinates do |cell, x, y|
+      yield cell, x, y if cell.blizzard?
+    end
+  end
+
+  def dup_grid_walls
+    grid = @grid.map { |cell| cell.wall? ? Cell::Wall : Cell::Empty }
+    self.class.new(@width, @height, grid)
+  end
+
   def unsafe_fetch(index : Int)
     @grid.unsafe_fetch(index)
   end
@@ -127,5 +162,109 @@ class Grid
   end
 end
 
+class Simulation
+  def initialize(@grid : Grid)
+  end
+
+  def update : Nil
+    grid = @grid.dup_grid_walls
+    @grid.each_blizzard_with_coordinates do |cell, x, y|
+      advance_blizzard(cell, x, y, grid)
+    end
+    @grid = grid
+  end
+
+  private def advance_blizzard(cell, x, y, grid)
+    move_left(grid, x, y) if cell.left?
+    move_right(grid, x, y) if cell.right?
+    move_up(grid, x, y) if cell.up?
+    move_down(grid, x, y) if cell.down?
+  end
+
+  private def move_left(grid, x, y)
+    puts "Move (#{x}, #{y}) left" if DEBUG > 1
+    x = look_left(grid, x, y)
+    grid[x, y] |= Cell::Left
+  end
+
+  private def move_right(grid, x, y)
+    puts "Move (#{x}, #{y}) right" if DEBUG > 1
+    x = look_right(grid, x, y)
+    grid[x, y] |= Cell::Right
+  end
+
+  private def move_up(grid, x, y)
+    puts "Move (#{x}, #{y}) up" if DEBUG > 1
+    y = look_up(grid, x, y)
+    grid[x, y] |= Cell::Up
+  end
+
+  private def move_down(grid, x, y)
+    puts "Move (#{x}, #{y}) down" if DEBUG > 1
+    y = look_down(grid, x, y)
+    grid[x, y] |= Cell::Down
+  end
+
+  private def look_left(grid, x, y)
+    loop do
+      x -= 1
+      x %= grid.width
+      break unless grid[x, y].wall?
+    end
+    x
+  end
+
+  private def look_right(grid, x, y)
+    loop do
+      x += 1
+      x %= grid.width
+      break unless grid[x, y].wall?
+    end
+    x
+  end
+
+  private def look_up(grid, x, y)
+    loop do
+      y -= 1
+      y %= grid.height
+      break unless grid[x, y].wall?
+    end
+    y
+  end
+
+  private def look_down(grid, x, y)
+    loop do
+      y += 1
+      y %= grid.height
+      break unless grid[x, y].wall?
+    end
+    y
+  end
+
+  def to_s(io : IO) : Nil
+    @grid.to_s(io)
+  end
+end
+
+DEBUG = case ARGV.shift?
+        when "-d" then 1
+        when "-D" then 2
+        else           0
+        end
+
 grid = Grid.parse(STDIN)
-puts grid
+sim = Simulation.new(grid)
+if DEBUG > 0
+  puts "Initial state:"
+  puts sim
+  puts
+end
+
+20.times do |i|
+  sim.update
+  if DEBUG > 0
+    puts "Minute #{i + 1}:"
+    puts sim
+    puts
+  end
+end
