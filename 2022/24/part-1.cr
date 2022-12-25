@@ -118,6 +118,14 @@ class Grid
     new(width, height, grid)
   end
 
+  def index!(cell)
+    @grid.index!(cell)
+  end
+
+  def rindex!(cell)
+    @grid.rindex(cell) || raise NilAssertionError.new
+  end
+
   def in_bounds?(x, y)
     x.in?(0...width) && y.in?(0...height)
   end
@@ -160,16 +168,55 @@ class Grid
       io << cell
     end
   end
+
+  def to_s(io : IO, x, y) : Nil
+    @grid.each_with_index do |cell, index|
+      io.puts if index.divisible_by?(width) && index > 0
+      cy, cx = index.divmod(width)
+      if x == cx && y == cy
+        io << 'E'
+      else
+        io << cell
+      end
+    end
+  end
 end
 
+alias Point = {Int32, Int32}
+
 class Simulation
+  getter start : Point
+  getter finish : Point
+  getter position : Point
+
   def initialize(@grid : Grid)
+    @start = find_start(@grid)
+    @finish = find_finish(@grid)
+    @position = @start
+  end
+
+  private def find_start(grid)
+    index = grid.index!(Cell::Empty)
+    y, x = index.divmod(grid.width)
+    {x, y}
+  end
+
+  private def find_finish(grid)
+    index = grid.rindex!(Cell::Empty)
+    y, x = index.divmod(grid.width)
+    {x, y}
   end
 
   def update : Nil
     grid = @grid.dup_grid_walls
     @grid.each_blizzard_with_coordinates do |cell, x, y|
       advance_blizzard(cell, x, y, grid)
+    end
+
+    each_possible_option(grid) do |x, y|
+      @position = {x, y}
+      puts "Move to #{@position}" if DEBUG > 0
+      break
     end
     @grid = grid
   end
@@ -241,8 +288,34 @@ class Simulation
     y
   end
 
+  private def each_option
+    x, y = @position
+    yield x, y
+    yield x - 1, y
+    yield x + 1, y
+    yield x, y - 1
+    yield x, y + 1
+  end
+
+  private def each_possible_option(grid)
+    each_option do |x, y|
+      next unless grid.in_bounds?(x, y)
+
+      cell = grid[x, y]
+      yield x, y if cell == Cell::Empty # Not sure why .empty? doesn't work.
+    end
+  end
+
+  private def possible_options(grid)
+    options = [] of Point
+    each_possible_option do |x, y|
+      options << {x, y}
+    end
+    options
+  end
+
   def to_s(io : IO) : Nil
-    @grid.to_s(io)
+    @grid.to_s(io, *@position)
   end
 end
 
