@@ -40,9 +40,9 @@ class Puzzle
 
   def each_combination(&)
     unknown_count = @cells.count(Cell::Unknown)
-    combinations = 2 ** unknown_count
+    combinations = 2_u64 ** unknown_count
     combinations.times do |i|
-      j = 0
+      j = 0_u64
       cells = @cells.map do |cell|
         next cell unless cell.unknown?
         bit = i.bit(j)
