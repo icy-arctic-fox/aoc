@@ -2,6 +2,7 @@
 
 alias Coords = {Int32, Int32}
 alias Direction = {Int8, Int8}
+alias Key = {Int32, Int32, Int8, Int8, Int32}
 
 class Grid
   def initialize(@grid : Array(Array(UInt8)))
@@ -67,6 +68,10 @@ record(Crucible,
 
   def y
     @position[1]
+  end
+
+  def key : Key
+    {*position, *direction, straight_count}
   end
 
   def north?
@@ -148,6 +153,64 @@ record(Crucible,
   end
 end
 
+class PriorityQueue(T)
+  @items = [] of {T, Int32}
+  @set = Set(T).new
+
+  def size
+    @items.size
+  end
+
+  def includes?(value : T)
+    @set.includes?(value)
+  end
+
+  def empty?
+    @items.empty?
+  end
+
+  def push(value : T, priority : Int32) : Nil
+    @items << {value, priority}
+    @set << value
+    ci = @items.size - 1
+
+    while ci > 0
+      pi = (ci - 1) // 2
+      break if @items[ci][1] <= @items[pi][1]
+
+      tmp = @items[ci]
+      @items[ci] = @items[pi]
+      @items[pi] = tmp
+      ci = pi
+    end
+  end
+
+  def pop : T
+    li = @items.size - 1
+    value, priority = @items[0]
+    @items[0] = @items[li]
+    @items.pop
+    @set.delete(value)
+
+    li -= 1
+    pi = 0
+
+    loop do
+      ci = pi * 2 + 1
+      break if ci > li
+      rc = ci + 1
+      ci = rc if rc <= li && @items[rc][1] < @items[ci][1]
+      break if @items[pi][1] >= @items[ci][1]
+      tmp = @items[pi]
+      @items[pi] = @items[ci]
+      @items[ci] = tmp
+      pi = ci
+    end
+
+    value
+  end
+end
+
 class Solver
   def initialize(@grid : Grid)
   end
@@ -174,35 +237,40 @@ class Solver
 
   def a_star(start : Coords, goal : Coords)
     first = Crucible.new(position: start)
-    open_set = [first]
-    came_from = {} of Coords => Coords
+    open_set = PriorityQueue(Crucible).new
+    open_set.push(first, 0)
+    came_from = {} of Key => Key
 
-    g_score = Hash(Coords, Int32).new(Int32::MAX)
-    g_score[first.position] = 0
+    g_score = Hash(Key, Int32).new(Int32::MAX)
+    g_score[first.key] = 0
 
-    f_score = Hash(Coords, Int32).new(Int32::MAX)
-    f_score[first.position] = heuristic(first, goal)
+    f_score = Hash(Key, Int32).new(Int32::MAX)
+    f_score[first.key] = heuristic(first, goal)
 
-    found = [] of {Crucible, Array(Coords)}
+    found = {nil, [] of Key}
     until open_set.empty?
-      current = open_set.min_by { |c| f_score[c.position] }
-      STDERR.puts "Looking at #{current.position}"
-      open_set.delete(current)
-      next found << {current, reconstruct_path(came_from, current.position)} if current.position == goal
+      current = open_set.pop
+      if current.position == goal
+        prev = found[0]
+        if !prev || current.loss < prev.loss
+          found = {current, reconstruct_path(came_from, current.key)}
+          STDERR.puts "Search space: #{open_set.size}, current minimum: #{current.loss}"
+        end
+        next
+      end
 
       each_neighbor(current) do |neighbor|
-        STDERR.puts "POSSIBILITY: #{neighbor}"
         tentative_g_score = neighbor.loss
-        if tentative_g_score < g_score[neighbor.position]
-          came_from[neighbor.position] = current.position
-          g_score[neighbor.position] = tentative_g_score
-          f_score[neighbor.position] = tentative_g_score + heuristic(neighbor, goal)
-          open_set << neighbor unless open_set.includes?(neighbor)
+        if tentative_g_score < g_score[neighbor.key]
+          came_from[neighbor.key] = current.key
+          g_score[neighbor.key] = tentative_g_score
+          f_score[neighbor.key] = tentative_g_score + heuristic(neighbor, goal)
+          open_set.push(neighbor, tentative_g_score) unless open_set.includes?(neighbor)
         end
       end
     end
 
-    found.min_by &.first.loss
+    found
   end
 
   private def heuristic(crucible : Crucible, goal : Coords) : Int32
@@ -214,7 +282,7 @@ end
 
 grid = Grid.from_io(STDIN)
 solver = Solver.new(grid)
-STDERR.puts grid
 crucible, path = solver.a_star({0, 0}, {grid.width - 1, grid.height - 1})
-grid.to_s(STDERR, path)
+raise "Failed to find path!" unless crucible
+grid.to_s(STDERR, path.map { |e| {e[0], e[1]} })
 puts crucible.loss
