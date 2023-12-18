@@ -1,253 +1,125 @@
 #!/usr/bin/env crystal
 
-require "bit_array"
-
 enum Direction
   Left
   Right
   Up
   Down
 
+  def horizontal?
+    self.left? || self.right?
+  end
+
+  def vertical?
+    self.up? || self.down?
+  end
+
   def self.from_char(char : Char) : self
     case char
-    when 'L' then Left
-    when 'R' then Right
-    when 'U' then Up
-    when 'D' then Down
+    when '0' then Right
+    when '1' then Down
+    when '2' then Left
+    when '3' then Up
     else          raise "Unrecognized direction '#{char}'"
     end
   end
 
-  def expand(x, y, amount)
+  def apply(amount)
     case self
-    in .left?  then {x - amount, x, y, y}
-    in .right? then {x, x + amount, y, y}
-    in .up?    then {x, x, y - amount, y}
-    in .down?  then {x, x, y, y + amount}
-    end
-  end
-
-  def move(x, y, amount)
-    case self
-    in .left?  then {x - amount, y}
-    in .right? then {x + amount, y}
-    in .up?    then {x, y - amount}
-    in .down?  then {x, y + amount}
+    in .left?  then {-amount, 0}
+    in .right? then {+amount, 0}
+    in .up?    then {0, -amount}
+    in .down?  then {0, +amount}
     end
   end
 end
 
-record(Step, direction : Direction, amount : Int64, color : UInt32) do
+record(Step, direction : Direction, amount : Int64) do
   def self.parse(text : String) : self
-    match = text.match(/^([LRUD]) (\d+) \(#([0-9a-f]{6})\)$/)
+    match = text.match(/^[LRUD] \d+ \(#([0-9a-f]{6})\)$/)
     raise "Invalid step string" unless match
 
-    direction = case match[3][5]
-                when '0' then Direction::Right
-                when '1' then Direction::Down
-                when '2' then Direction::Left
-                when '3' then Direction::Up
-                else          raise "Unrecognized direction '#{match[1][5]}'"
-                end
-    amount = match[3][0...5].to_i64(16)
-    color = match[3].to_u32(16)
-    new(direction, amount, color)
+    direction = Direction.from_char(match[1][5])
+    amount = match[1][0...5].to_i64(16)
+    new(direction, amount)
   end
 end
 
-class Grid
-  getter width : Int64
-
-  getter height : Int64
-
-  getter anchor_x : Int64
-
-  getter anchor_y : Int64
-
-  def initialize(@width = 1, @height = 1, @anchor_x = 0, @anchor_y = 0, @cells = BitArray.new(1, true))
+record(Bounds, x : Int64, y : Int64, width : Int64, height : Int64) do
+  def left
+    x
   end
 
-  def min_x
-    -anchor_x
+  def right
+    x + width
   end
 
-  def max_x
-    width - anchor_x - 1
+  def top
+    y
   end
 
-  def min_y
-    -anchor_y
-  end
-
-  def max_y
-    height - anchor_y - 1
+  def bottom
+    y + height
   end
 
   def size
     width * height
   end
 
-  def count
-    @cells.count(true)
-  end
-
-  def []?(x, y)
-    return unless in_bounds?(x, y)
-    index = coords_to_index(x, y)
-    @cells[index]
-  end
-
-  def [](x, y)
-    raise IndexError.new("(#{x}, #{y})") unless in_bounds?(x, y)
-    index = coords_to_index(x, y)
-    @cells[index]
-  end
-
-  def []=(x, y, value)
-    unless in_bounds?(x, y)
-      resize(
-        Math.min(x, min_x),
-        Math.max(x, max_x),
-        Math.min(y, min_y),
-        Math.max(y, max_y),
-      )
-    end
-
-    index = coords_to_index(x, y)
-    @cells[index] = value
-  end
-
-  private def coords_to_index(x, y)
-    (y + anchor_y) * width + (x + anchor_x)
-  end
-
-  def resize(min_x : Int64, max_x : Int64, min_y : Int64, max_y : Int64) : Nil
-    width = max_x - min_x + 1
-    height = max_y - min_y + 1
-    x = min_x
-    y = min_y
-    @cells = BitArray.new(width * height) do
-      value = self[x, y]? || false
-      x += 1
-      if x > max_x
-        y += 1
-        x = min_x
-      end
-      value
-    end
-    @width = width
-    @height = height
-    @anchor_x = -min_x
-    @anchor_y = -min_y
-  end
-
-  def apply(step : Step, x : Int64, y : Int64)
-    step_min_x, step_max_x, step_min_y, step_max_y = step.direction.expand(x, y, step.amount)
-    grid_min_x = Math.min(step_min_x, min_x)
-    grid_max_x = Math.max(step_max_x, max_x)
-    grid_min_y = Math.min(step_min_y, min_y)
-    grid_max_y = Math.max(step_max_y, max_y)
-
-    if grid_min_x < min_x || grid_max_x > max_x ||
-       grid_min_y < min_y || grid_max_y > max_y
-      resize(grid_min_x, grid_max_x, grid_min_y, grid_max_y)
-    end
-
-    (step_min_x..step_max_x).each do |x|
-      (step_min_y..step_max_y).each do |y|
-        self[x, y] = true
-      end
-    end
-  end
-
-  def fill_interior
-    x, y = find_interior || raise "Failed to find interior"
-    fill(x, y)
-  end
-
-  def find_interior
-    grid = dup
-    (min_x..max_x).each do |x|
-      (min_y..max_y).each do |y|
-        next if grid[x, y]
-        edge = grid.fill(x, y)
-        return {x, y} unless edge
-      end
-    end
-  end
-
-  def fill(x, y)
-    return edge?(x, y) if self[x, y]
-
-    queue = [{x, y}]
-    self[x, y] = true
-
-    edge = false
-    until queue.empty?
-      cx, cy = queue.pop
-      edge = true if edge?(cx, cy)
-      each_valid_neighbor(cx, cy) do |nx, ny|
-        next if self[nx, ny]
-        self[nx, ny] = true
-        queue << {nx, ny}
-      end
-    end
-
-    edge
-  end
-
-  def edge?(x, y)
-    x == min_x || x == max_x || y == min_y || y == max_y
-  end
-
-  def each_neighbor(x, y)
-    (-1..1).each do |x_off|
-      (-1..1).each do |y_off|
-        next if x_off == 0 && y_off == 0
-        yield x + x_off, y + y_off
-      end
-    end
-  end
-
-  def each_valid_neighbor(x, y)
-    each_neighbor(x, y) do |nx, ny|
-      yield nx, ny if in_bounds?(nx, ny)
-    end
-  end
-
-  def in_bounds?(x, y)
-    (min_x <= x <= max_x) && (min_y <= y <= max_y)
-  end
-
-  def dup
-    Grid.new(@width, @height, @anchor_x, @anchor_y, @cells.dup)
-  end
-
-  def to_s(io : IO) : Nil
-    x = 0
-    y = 0
-    @cells.each do |cell|
-      io << (cell ? '#' : '.')
-      x += 1
-      if x >= width
-        x = 0
-        y += 1
-        io.puts
-      end
-    end
+  def intersection(other : Bounds)
+    min_x = Math.min(right, other.right)
+    max_x = Math.max(left, other.left)
+    min_y = Math.min(bottom, other.bottom)
+    max_y = Math.max(top, other.top)
+    width = max_x - min_x
+    height = max_y - min_y
+    Bounds.new(min_x, min_y, width, height) if width > 0 && height > 0
   end
 end
 
-x = 0
-y = 0
+class Grid
+  @bounds = [] of Bounds
+  @direction : Direction?
+
+  @x1 = 0_i64
+  @y1 = 0_i64
+  @x2 = 0_i64
+  @y2 = 0_i64
+
+  def apply(step : Step)
+    x_off, y_off = step.direction.apply(step.amount)
+    @x2 += x_off
+    @y2 += y_off
+    if @direction.try &.horizontal? == step.direction.vertical?
+      add_bounds
+      @x1 += @x2
+      @y1 += @y2
+      @direction = nil
+    else
+      @direction = step.direction
+    end
+  end
+
+  private def add_bounds
+    # TODO: Add inner square
+    x = Math.min(@x1, @x2)
+    y = Math.min(@y1, @y2)
+    @bounds << Bounds.new(x, y, (@x2 - @x1).abs, (@y2 - @y1).abs)
+  end
+
+  def size
+    size = @bounds.sum &.size
+    @bounds.each_combination(2, true) do |(a, b)|
+      intersection = a.intersection(b)
+      size -= intersection.size if intersection
+    end
+    size
+  end
+end
+
 grid = Grid.new
 STDIN.each_line do |line|
   step = Step.parse(line)
-  grid.apply(step, x, y)
-  x, y = step.direction.move(x, y, step.amount)
+  grid.apply(step)
 end
-STDERR.puts grid
-STDERR.puts grid.count
-grid.fill_interior
-STDERR.puts grid
-puts grid.count
+puts grid.size
